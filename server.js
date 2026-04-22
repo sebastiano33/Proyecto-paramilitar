@@ -2,7 +2,6 @@ const cors = require('cors');
 const express = require('express');
 const app = express();
 const port = 3000;
-const PORT = process.env.PORT || 3000;
 
 // Middleware para entender JSON en el cuerpo de la petición
 app.use(express.json());
@@ -168,6 +167,8 @@ app.get('/posicion-bus', (req, res) => {
     });
 });
 
-app.listen(port, () => {
-    console.log(`Servidor de ubicaciones corriendo en http://localhost:${port}`);
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });
