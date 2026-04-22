@@ -1,7 +1,20 @@
 const cors = require('cors');
 const express = require('express');
+const http = require('http'); // <- NUEVO Modulo Nativo
+const { Server } = require('socket.io'); // <- NUEVO Modulo WebSocket
+
 const app = express();
-const port = 3000;
+
+// Instanciar Servidor Http y pasarle la App de Express
+const server = http.createServer(app);
+
+// Acoplar WebSockets al servidor HTTP permitiendo todas las políticas
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 // Middleware para entender JSON en el cuerpo de la petición
 app.use(express.json());
@@ -26,6 +39,10 @@ app.post('/ubicacion', (req, res) => {
 
     // Guardar en memoria
     ubicaciones.push({ latitud, longitud });
+    
+    // NOTIFICAR INMEDIATAMENTE POR WEBSOCKET A TODOS LOS CLIENTES (SIN ENVIAR DATA EXTRA, SOLO EL "TIMBRE")
+    io.emit('nueva_posicion');
+    
     res.status(201).json({ message: 'Ubicación guardada exitosamente' });
 });
 
@@ -169,6 +186,7 @@ app.get('/posicion-bus', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en puerto ${PORT}`);
+// Reemplazo vital: Usar "server.listen" en vez de "app.listen" para arrancar juntos tanto WebSockets como Express
+server.listen(PORT, () => {
+    console.log(`Servidor Híbrido HTTP + WebSockets corriendo en el puerto ${PORT}`);
 });
