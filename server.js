@@ -22,7 +22,111 @@ app.use(express.json());
 // Activar CORS a través de la librería oficial de forma global
 app.use(cors());
 
-// Arreglo para guardar las ubicaciones en memoria
+// Healthcheck principal requerido para plataformas de despliegue como Render
+app.get('/', (req, res) => {
+    res.send('Servidor Backend Híbrido funcionando correctamente.');
+});
+
+// --- ESTRUCTURA BASE MULTIPLE BUSES ---
+// Objeto principal en memoria para almacenar la data de múltiples buses
+const buses = {
+    bus1: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null },
+    bus2: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null },
+    bus3: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null }
+};
+
+// Función nativa para recalcular el promedio de los pasajeros de un bus y emitirlo
+function calcularYEmitir(busId) {
+    const bus = buses[busId];
+    if (!bus || bus.ubicaciones.length === 0) return;
+
+    // 1. Centro Geográfico Preliminar
+    let sumaLatPreliminar = 0;
+    let sumaLonPreliminar = 0;
+    for (const ubi of bus.ubicaciones) {
+        sumaLatPreliminar += ubi.latitud;
+        sumaLonPreliminar += ubi.longitud;
+    }
+    const promedioLatPreliminar = sumaLatPreliminar / bus.ubicaciones.length;
+    const promedioLonPreliminar = sumaLonPreliminar / bus.ubicaciones.length;
+
+    // 2. Filtro Anti-Troll (Eliminar lejanía)
+    const UMBRAL_DISTANCIA = 0.01;
+    const ubicacionesCercanas = bus.ubicaciones.filter(ubi => {
+        const dLat = ubi.latitud - promedioLatPreliminar;
+        const dLon = ubi.longitud - promedioLonPreliminar;
+        const distancia = Math.sqrt(dLat * dLat + dLon * dLon);
+        return distancia <= UMBRAL_DISTANCIA;
+    });
+
+    const ubicacionesFinales = ubicacionesCercanas.length > 0 ? ubicacionesCercanas : bus.ubicaciones;
+
+    // 3. Calcular la verdad absoluta final
+    let sumaLat = 0;
+    let sumaLon = 0;
+    for (const ubi of ubicacionesFinales) {
+        sumaLat += ubi.latitud;
+        sumaLon += ubi.longitud;
+    }
+    const latitudPromedio = sumaLat / ubicacionesFinales.length;
+    const longitudPromedio = sumaLon / ubicacionesFinales.length;
+
+    // Optimización vital: Evitar la saturación del servidor cortando envíos repetidos
+    if (bus.latitudPromedio === latitudPromedio && bus.longitudPromedio === longitudPromedio) {
+        return; 
+    }
+
+    // Guardar el último promedio verídico en memoria para próximos usuarios que se conecten
+    buses[busId].latitudPromedio = latitudPromedio;
+    buses[busId].longitudPromedio = longitudPromedio;
+
+    // Disparar WebSocket exclusivamente con los datos de este bus
+    io.emit('bus-update', {
+        busId: busId,
+        latitudPromedio,
+        longitudPromedio
+    });
+}
+
+// Interceptor puro del Socket.IO (No requiere endpoint REST)
+io.on('connection', (socket) => {
+    console.log('Nuevo pasajero conectado al Socket:', socket.id);
+
+    // 1. Enviar ESTADO INICIAL de todos los buses a este usuario nada más conectarse
+    const estadoInicial = [];
+    for (const id in buses) {
+        if (buses[id].latitudPromedio !== null && buses[id].longitudPromedio !== null) {
+            estadoInicial.push({
+                busId: id,
+                latitudPromedio: buses[id].latitudPromedio,
+                longitudPromedio: buses[id].longitudPromedio
+            });
+        }
+    }
+    // Emitir solamente a este usuario (socket.emit en lugar de io.emit)
+    socket.emit('estado_inicial', estadoInicial);
+
+    // 2. Escuchar cuando el frontend manda 'ubicacion'
+    socket.on('ubicacion', (data) => {
+        const { latitud, longitud, busId } = data;
+
+        // Validar que el bus exista en nuestro ecosistema y los datos sean sanos
+        if (typeof latitud === 'number' && typeof longitud === 'number' && buses[busId]) {
+            // Se inserta la ubicación proveniente del pasajero al array de ese bus
+            buses[busId].ubicaciones.push({ latitud, longitud });
+            
+            // Mantener la memoria limpia limitando el historial de pasajeros
+            if (buses[busId].ubicaciones.length > 50) {
+                buses[busId].ubicaciones.shift();
+            }
+
+            // Calcular y notificar a los mapas en vivo
+            calcularYEmitir(busId);
+        }
+    });
+});
+
+// Arreglo para guardar las ubicaciones en memoria de la versión legacy
 const ubicaciones = [];
 
 // Historial de las últimas posiciones promedio para calcular dirección y velocidad
