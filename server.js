@@ -13,7 +13,8 @@ const io = new Server(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    transports: ["websocket", "polling"] // Configuración crítica para el proxy y load balancer de Render
 });
 
 // Middleware para entender JSON en el cuerpo de la petición
