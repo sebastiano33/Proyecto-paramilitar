@@ -14,22 +14,25 @@ app.use(express.static(path.join(__dirname, '../frontend-map')));
 // --- CARGAR DATOS DE TRANSPORTE (JSON) ---
 const transitData = JSON.parse(fs.readFileSync(path.join(__dirname, 'transit_data.json'), 'utf8'));
 
-// --- ESTADO DEL SISTEMA EN MEMORIA ---
-const buses = {}; 
-const clienteControl = {}; 
-const reportes = {}; 
-const reaccionesReportes = {}; 
-const usuarios = {}; 
-const boarding = {}; 
-const notificaciones = {}; 
-const chatBuses = {}; 
-const anuncios = []; 
-const comentarios = []; 
-const waitingAtStop = {}; // { stopId: { userId: expiresAt } }
-const sharedTrips = {}; // { token: { userId, busId, routeId, destinationStopId, createdAt, expiresAt, isActive } }
-const routeViews = []; // { routeId, timestamp }
+// --- ESTADO DEL SISTEMA GLOBAL ---
+// Declarados al inicio para evitar Temporal Dead Zone (TDZ)
+const buses = {};
+const clienteControl = {};
+const reportes = {};
+const reaccionesReportes = {};
+const usuarios = {};
+const boarding = {};
+const notificaciones = {};
+const chatBuses = {};
+const anuncios = [];
+const comentarios = [];
+const waitingAtStop = {};
+const sharedTrips = {};
+const routeViews = [];
 const crypto = require('crypto');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "clave_super_secreta";
+
+console.log('[INIT] Estado del sistema inicializado correctamente.');
 
 // Inicializar buses desde el JSON
 transitData.routes.forEach(route => {
@@ -63,7 +66,7 @@ function sumarPuntos(userId, socketId, cantidad, nombre = null, lat = null, lon 
     usuarios[userId].puntos += cantidad;
     if (lat) usuarios[userId].lat = lat;
     if (lon) usuarios[userId].lon = lon;
-    
+
     io.to(socketId).emit('update-recompensas', { puntos: usuarios[userId].puntos });
 }
 
@@ -173,10 +176,10 @@ app.get('/stops/safety', (req, res) => {
     transitData.routes.forEach(r => r.stops.forEach(s => { allStops[s.name] = { name: s.name, lat: s.lat, lng: s.lng }; }));
     Object.values(allStops).forEach(stop => {
         // Solo contar reportes del tipo 'unsafe_stop'
-        const relevant = Object.values(reportes).filter(r => 
+        const relevant = Object.values(reportes).filter(r =>
             r.stopId === stop.name && r.type === 'unsafe_stop' && (ahora - r.timestamp) < windowMs
         );
-        
+
         let score = 0;
         relevant.forEach(r => {
             const ageFactor = 1 - (ahora - r.timestamp) / windowMs;
@@ -186,7 +189,7 @@ app.get('/stops/safety', (req, res) => {
 
         // REGLA: Mínimo impacto para visualización (~2-3 reportes o 1 muy confirmado)
         const finalRisk = score < 0.4 ? 0 : Math.min(1, score);
-        
+
         // Detección de zona crítica nocturna
         const hour = new Date().getHours();
         const isNight = (hour >= 20 || hour < 6);
@@ -242,7 +245,7 @@ app.get('/anuncios', (req, res) => {
         const zona = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
         filtered = anuncios.filter(ad => ad.zona === zona);
     }
-    res.json([...filtered].sort((a,b) => (b.destacado?1:0) - (a.destacado?1:0)));
+    res.json([...filtered].sort((a, b) => (b.destacado ? 1 : 0) - (a.destacado ? 1 : 0)));
 });
 
 app.post('/publicar-anuncio', (req, res) => {
@@ -262,7 +265,7 @@ app.get('/ranking', (req, res) => {
         const zona = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
         // Filtrado por zona si se desea, o global para el top
     }
-    const ranking = users.sort((a,b) => b.puntos - a.puntos).slice(0, 10).map(u => ({ nombre: u.nickname, puntos: u.puntos }));
+    const ranking = users.sort((a, b) => b.puntos - a.puntos).slice(0, 10).map(u => ({ nombre: u.nickname, puntos: u.puntos }));
     res.json(ranking);
 });
 
@@ -303,14 +306,14 @@ app.get('/recompensas', (req, res) => {
 app.post('/canjear-recompensa', (req, res) => {
     const { userId, rewardId } = req.body;
     if (!usuarios[userId]) return res.status(404).json({ error: 'Usuario no encontrado' });
-    
+
     const recompensa = catalogoRecompensas.find(r => r.id === rewardId);
     if (!recompensa) return res.status(404).json({ error: 'Recompensa no válida' });
-    
+
     if (usuarios[userId].puntos < recompensa.costo) {
         return res.status(400).json({ error: 'Puntos insuficientes' });
     }
-    
+
     usuarios[userId].puntos -= recompensa.costo;
     // Lógica adicional para 'destacado'
     if (rewardId === 'destacado') {
@@ -321,7 +324,7 @@ app.post('/canjear-recompensa', (req, res) => {
             io.emit('anuncio-destacado', { id: lastAd.id });
         }
     }
-    
+
     res.json({ success: true, puntos: usuarios[userId].puntos });
 });
 
@@ -344,12 +347,12 @@ app.post('/anuncio-click', (req, res) => {
 app.post('/recomendar-ruta', (req, res) => {
     const { userLat, userLon, destLat, destLon } = req.body;
     const recs = [];
-    
+
     transitData.routes.forEach(route => {
         // Encontrar paradas cercanas al origen y destino (simulado)
         const dOrigin = Math.min(...route.stops.map(s => getDist(userLat, userLon, s.lat, s.lng)));
         const dDest = Math.min(...route.stops.map(s => getDist(destLat, destLon, s.lat, s.lng)));
-        
+
         if (dOrigin < 1000 && dDest < 1000) {
             recs.push({
                 rutaId: route.id,
@@ -366,10 +369,10 @@ app.post('/recomendar-ruta', (req, res) => {
 
 function getDist(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
-    const p1 = lat1 * Math.PI/180, p2 = lat2 * Math.PI/180;
-    const dp = (lat2-lat1) * Math.PI/180, dl = (lon2-lon1) * Math.PI/180;
-    const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+    const dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // --- BOARDING Y CHAT ---
@@ -402,30 +405,51 @@ app.post('/buses/:busId/chat', (req, res) => {
 
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
-    console.log('Usuario conectado:', socket.id);
-    clienteControl[socket.id] = { ultimoEnvio: 0 };
+    try {
+        console.log(`[SOCKET] Usuario conectado: ${socket.id}`);
+        clienteControl[socket.id] = { ultimoEnvio: 0 };
 
-    socket.emit('estado_inicial', {
-        buses: Object.keys(buses).map(id => ({ busId: id, lat: buses[id].latitudPromedio, lon: buses[id].longitudPromedio }))
-    });
+        // Debug de seguridad para anuncios
+        const numAnuncios = (typeof anuncios !== 'undefined') ? anuncios.length : 0;
+        console.log(`[DEBUG] Enviando estado inicial. Anuncios disponibles: ${numAnuncios}`);
+
+        socket.emit('estado_inicial', {
+            buses: Object.keys(buses).map(id => ({
+                busId: id,
+                lat: buses[id].latitudPromedio,
+                lon: buses[id].longitudPromedio
+            })),
+            anuncios: anuncios // Garantizar que se envíen
+        });
+    } catch (err) {
+        console.error('[CRITICAL ERROR] Error en io.on connection:', err);
+        // El servidor NO se cae gracias a este catch
+    }
 
     socket.on('ubicacion', (data) => {
-        const { busId, latitud, longitud, userId } = data;
-        const ahora = Date.now();
-        const control = clienteControl[socket.id];
-        if (ahora - control.ultimoEnvio < 2000) return;
+        try {
+            const { busId, latitud, longitud, userId } = data;
+            const ahora = Date.now();
+            const control = clienteControl[socket.id];
+            if (!control || ahora - control.ultimoEnvio < 2000) return;
 
-        control.ultimoEnvio = ahora;
-        if (buses[busId]) {
-            buses[busId].latitudPromedio = latitud;
-            buses[busId].longitudPromedio = longitud;
-            buses[busId].ultimoEnvio = ahora;
-            if (userId) sumarPuntos(userId, socket.id, 1, null, latitud, longitud);
-            io.emit('bus-update', { busId, lat: latitud, lon: longitud, velocidad: 30 });
+            control.ultimoEnvio = ahora;
+            if (buses[busId]) {
+                buses[busId].latitudPromedio = latitud;
+                buses[busId].longitudPromedio = longitud;
+                buses[busId].ultimoEnvio = ahora;
+                if (userId) sumarPuntos(userId, socket.id, 1, null, latitud, longitud);
+                io.emit('bus-update', { busId, lat: latitud, lon: longitud, velocidad: 30 });
+            }
+        } catch (e) {
+            console.error('[ERROR] Error en evento ubicacion:', e);
         }
     });
 
-    socket.on('disconnect', () => delete clienteControl[socket.id]);
+    socket.on('disconnect', () => {
+        console.log(`[SOCKET] Usuario desconectado: ${socket.id}`);
+        delete clienteControl[socket.id];
+    });
 });
 
 const PORT = process.env.PORT || 3000;
@@ -480,7 +504,7 @@ app.get('/admin/export/demand', apiKeyMiddleware, (req, res) => {
             avg_viewers_per_hour: (views.length / 24).toFixed(2)
         };
     }).sort((a, b) => b.total_views_today - a.total_views_today);
-    
+
     handleExport(req, res, demand);
 });
 
@@ -495,7 +519,7 @@ app.get('/admin/export/problems', apiKeyMiddleware, (req, res) => {
         const types = {};
         relevant.forEach(r => types[r.type] = (types[r.type] || 0) + 1);
         const mostCommon = Object.keys(types).reduce((a, b) => types[a] > types[b] ? a : b, "none");
-        
+
         return {
             stop_id: name,
             stop_name: name,
@@ -514,8 +538,8 @@ app.get('/admin/export/activity', apiKeyMiddleware, (req, res) => {
     for (let i = 0; i < 24; i++) {
         const hStr = i.toString().padStart(2, '0');
         const start = hStr + ":00";
-        const end = (i+1).toString().padStart(2, '0') + ":00";
-        
+        const end = (i + 1).toString().padStart(2, '0') + ":00";
+
         // Simular datos de actividad basados en reportes y vistas
         const users = new Set(Object.values(reportes).map(r => r.userId));
         const hourReports = Object.values(reportes).filter(r => new Date(r.timestamp).getHours() === i);
@@ -558,7 +582,7 @@ app.get('/trips/:token', (req, res) => {
     if (!trip || !trip.isActive || Date.now() > trip.expiresAt) {
         return res.status(404).json({ expired: true });
     }
-    
+
     // Buscar datos de la parada destino
     let destination = null;
     transitData.routes.forEach(r => {
