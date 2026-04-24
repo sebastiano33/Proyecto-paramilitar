@@ -1,0 +1,347 @@
+{
+  "routes": [
+    {
+      "id": "T100E",
+      "name": "Portal - Centro (Expresa)",
+      "stops": [
+        {
+          "name": "Portal",
+          "lat": 10.3791,
+          "lng": -75.4682
+        },
+        {
+          "name": "Madre Bernarda",
+          "lat": 10.3846,
+          "lng": -75.4801
+        },
+        {
+          "name": "La Castellana",
+          "lat": 10.3905,
+          "lng": -75.4883
+        },
+        {
+          "name": "Los Ángeles",
+          "lat": 10.3951,
+          "lng": -75.4947
+        },
+        {
+          "name": "Los Ejecutivos",
+          "lat": 10.3995,
+          "lng": -75.5002
+        },
+        {
+          "name": "Villa Olímpica",
+          "lat": 10.4041,
+          "lng": -75.5061
+        },
+        {
+          "name": "Cuatro Vientos",
+          "lat": 10.4084,
+          "lng": -75.5118
+        },
+        {
+          "name": "República del Líbano",
+          "lat": 10.4124,
+          "lng": -75.5165
+        },
+        {
+          "name": "España",
+          "lat": 10.4168,
+          "lng": -75.5212
+        },
+        {
+          "name": "María Auxiliadora",
+          "lat": 10.4187,
+          "lng": -75.5244
+        },
+        {
+          "name": "El Prado",
+          "lat": 10.4211,
+          "lng": -75.5282
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "Delicias",
+          "lat": 10.4235,
+          "lng": -75.5358
+        },
+        {
+          "name": "La Popa",
+          "lat": 10.4239,
+          "lng": -75.5385
+        },
+        {
+          "name": "Lo Amador",
+          "lat": 10.4246,
+          "lng": -75.5422
+        },
+        {
+          "name": "Chambacú",
+          "lat": 10.4268,
+          "lng": -75.5457
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        },
+        {
+          "name": "La Bodeguita",
+          "lat": 10.4208,
+          "lng": -75.5539
+        }
+      ],
+      "schedule": {
+        "start_time": "6:00 a.m.",
+        "end_time": "8:00 p.m.",
+        "frequency": "L-V (Sábados hasta 1:00 p.m.)"
+      }
+    },
+    {
+      "id": "T101",
+      "name": "Portal - Centro",
+      "stops": [
+        {
+          "name": "Portal",
+          "lat": 10.3791,
+          "lng": -75.4682
+        },
+        {
+          "name": "Madre Bernarda",
+          "lat": 10.3846,
+          "lng": -75.4801
+        },
+        {
+          "name": "España",
+          "lat": 10.4168,
+          "lng": -75.5212
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "Chambacú",
+          "lat": 10.4268,
+          "lng": -75.5457
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:30 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "T102",
+      "name": "Portal - Crespo",
+      "stops": [
+        {
+          "name": "Portal",
+          "lat": 10.3791,
+          "lng": -75.4682
+        },
+        {
+          "name": "Madre Bernarda",
+          "lat": 10.3846,
+          "lng": -75.4801
+        },
+        {
+          "name": "Villa Olímpica",
+          "lat": 10.4041,
+          "lng": -75.5061
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "Chambacú",
+          "lat": 10.4268,
+          "lng": -75.5457
+        },
+        {
+          "name": "Parque de la Marina",
+          "lat": 10.4225,
+          "lng": -75.5535
+        },
+        {
+          "name": "Crespo Calle 70",
+          "lat": 10.4445,
+          "lng": -75.5185
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "T103",
+      "name": "Portal - Bocagrande",
+      "stops": [
+        {
+          "name": "Portal",
+          "lat": 10.3791,
+          "lng": -75.4682
+        },
+        {
+          "name": "Cuatro Vientos",
+          "lat": 10.4084,
+          "lng": -75.5118
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "La Bodeguita",
+          "lat": 10.4208,
+          "lng": -75.5539
+        },
+        {
+          "name": "Bocagrande (Carrera 2)",
+          "lat": 10.4072,
+          "lng": -75.5528
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "X101",
+      "name": "San José de los Campanos - Centro",
+      "stops": [
+        {
+          "name": "San José de los Campanos",
+          "lat": 10.3655,
+          "lng": -75.4582
+        },
+        {
+          "name": "13 de Junio",
+          "lat": 10.3952,
+          "lng": -75.4821
+        },
+        {
+          "name": "Cuatro Vientos",
+          "lat": 10.4084,
+          "lng": -75.5118
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "X102",
+      "name": "Portal - Bosque - Centro",
+      "stops": [
+        {
+          "name": "Patio Portal",
+          "lat": 10.3791,
+          "lng": -75.4682
+        },
+        {
+          "name": "Diagonal 21 (Bosque)",
+          "lat": 10.4012,
+          "lng": -75.5255
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "X104",
+      "name": "Terminal - Pedro Romero - Centro",
+      "stops": [
+        {
+          "name": "Terminal de Transportes",
+          "lat": 10.3725,
+          "lng": -75.4501
+        },
+        {
+          "name": "Pedro Romero",
+          "lat": 10.4055,
+          "lng": -75.5021
+        },
+        {
+          "name": "Bazurto",
+          "lat": 10.4228,
+          "lng": -75.5321
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    },
+    {
+      "id": "X105",
+      "name": "Ciudadela 2000 - Centro",
+      "stops": [
+        {
+          "name": "Ciudadela 2000",
+          "lat": 10.3812,
+          "lng": -75.4455
+        },
+        {
+          "name": "Crisanto Luque",
+          "lat": 10.4088,
+          "lng": -75.5288
+        },
+        {
+          "name": "Centro",
+          "lat": 10.4236,
+          "lng": -75.5511
+        }
+      ],
+      "schedule": {
+        "start_time": "5:00 a.m.",
+        "end_time": "9:00 p.m.",
+        "frequency": "Diario"
+      }
+    }
+  ]
+}

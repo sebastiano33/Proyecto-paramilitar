@@ -12,7 +12,18 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend-map')));
 
 // --- CARGAR DATOS DE TRANSPORTE (JSON) ---
-const transitData = JSON.parse(fs.readFileSync(path.join(__dirname, 'transit_data.json'), 'utf8'));
+let transitData = { routes: [] };
+try {
+    const dataPath = path.join(__dirname, 'transit_data.json');
+    if (fs.existsSync(dataPath)) {
+        transitData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+        console.log("[INIT] Transit data cargado correctamente ✓");
+    } else {
+        console.warn("[WARN] transit_data.json no encontrado, inicializando con rutas vacías.");
+    }
+} catch (err) {
+    console.error("[ERROR] Fallo al leer transit_data.json:", err.message);
+}
 
 // --- ESTADO DEL SISTEMA GLOBAL ---
 // Declarados al inicio para evitar Temporal Dead Zone (TDZ)
