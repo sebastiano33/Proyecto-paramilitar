@@ -1,47 +1,98 @@
 const cors = require('cors');
 const express = require('express');
-const http = require('http'); // <- NUEVO Modulo Nativo
-const { Server } = require('socket.io'); // <- NUEVO Modulo WebSocket
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
-
-// Instanciar Servidor Http y pasarle la App de Express
 const server = http.createServer(app);
 
-// Acoplar WebSockets al servidor HTTP permitiendo todas las políticas
+// Socket.IO con configuración estable para Render
 const io = new Server(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     },
-    transports: ["websocket", "polling"] // Configuración crítica para el proxy y load balancer de Render
+    transports: ["websocket", "polling"]
 });
 
-// Middleware para entender JSON en el cuerpo de la petición
 app.use(express.json());
-
-// Activar CORS a través de la librería oficial de forma global
 app.use(cors());
 
-// Healthcheck principal requerido para plataformas de despliegue como Render
+// Healthcheck requerido por Render para verificar que el servidor está vivo
 app.get('/', (req, res) => {
-    res.send('Servidor Backend Híbrido funcionando correctamente.');
+    res.send('Servidor SafeRoute funcionando correctamente — Solo WebSockets activos.');
 });
 
-// --- ESTRUCTURA BASE MULTIPLE BUSES ---
-// Objeto principal en memoria para almacenar la data de múltiples buses
+// --- SISTEMA DE ALERTAS DE LLEGADA ---
+const paradas = [
+    { id: 'stop-uni', nombre: 'Parada Universidad', lat: 10.412, lon: -75.532 },
+    { id: 'stop-centro', nombre: 'Parada Centro Histórico', lat: 10.423, lon: -75.548 },
+    { id: 'stop-terminal', nombre: 'Terminal de Transportes', lat: 10.385, lon: -75.475 }
+];
+
+const estadosAlerta = {}; // Guarda { "busId_stopId": "estado" }
+
+function calcularDistancia(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Radio de la tierra en metros
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // en metros
+}
+
+function checkAlertas(busId, lat, lon) {
+    paradas.forEach(stop => {
+        const dist = calcularDistancia(lat, lon, stop.lat, stop.lon);
+        let nuevoEstado = '🟢 Lejos';
+        let color = 'green';
+
+        if (dist <= 50) {
+            nuevoEstado = '⚫ En parada';
+            color = 'black';
+        } else if (dist <= 300) {
+            nuevoEstado = '🔴 Muy cerca';
+            color = 'red';
+        } else if (dist <= 1000) {
+            nuevoEstado = '🟡 Aproximándose';
+            color = 'orange';
+        }
+
+        const key = `${busId}_${stop.id}`;
+        if (estadosAlerta[key] !== nuevoEstado) {
+            estadosAlerta[key] = nuevoEstado;
+            
+            // Solo emitir si no es "Lejos" (para no saturar al inicio)
+            if (nuevoEstado !== '🟢 Lejos') {
+                io.emit('alerta-llegada', {
+                    busId,
+                    stopNombre: stop.nombre,
+                    estado: nuevoEstado,
+                    distancia: Math.round(dist),
+                    color
+                });
+            }
+        }
+    });
+}
+
+// --- FLOTA MULTI-BUS EN MEMORIA ---
 const buses = {
     bus1: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null },
     bus2: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null },
     bus3: { ubicaciones: [], latitudPromedio: null, longitudPromedio: null }
 };
 
-// Función nativa para recalcular el promedio de los pasajeros de un bus y emitirlo
+// Calcular promedio con filtro anti-outlier y emitir solo si hay cambio real
 function calcularYEmitir(busId) {
     const bus = buses[busId];
     if (!bus || bus.ubicaciones.length === 0) return;
 
-    // 1. Centro Geográfico Preliminar
+    // Paso 1: Centro geográfico preliminar
     let sumaLatPreliminar = 0;
     let sumaLonPreliminar = 0;
     for (const ubi of bus.ubicaciones) {
@@ -51,18 +102,15 @@ function calcularYEmitir(busId) {
     const promedioLatPreliminar = sumaLatPreliminar / bus.ubicaciones.length;
     const promedioLonPreliminar = sumaLonPreliminar / bus.ubicaciones.length;
 
-    // 2. Filtro Anti-Troll (Eliminar lejanía)
     const UMBRAL_DISTANCIA = 0.01;
     const ubicacionesCercanas = bus.ubicaciones.filter(ubi => {
         const dLat = ubi.latitud - promedioLatPreliminar;
         const dLon = ubi.longitud - promedioLonPreliminar;
-        const distancia = Math.sqrt(dLat * dLat + dLon * dLon);
-        return distancia <= UMBRAL_DISTANCIA;
+        return Math.sqrt(dLat * dLat + dLon * dLon) <= UMBRAL_DISTANCIA;
     });
 
     const ubicacionesFinales = ubicacionesCercanas.length > 0 ? ubicacionesCercanas : bus.ubicaciones;
 
-    // 3. Calcular la verdad absoluta final
     let sumaLat = 0;
     let sumaLon = 0;
     for (const ubi of ubicacionesFinales) {
@@ -72,226 +120,448 @@ function calcularYEmitir(busId) {
     const latitudPromedio = sumaLat / ubicacionesFinales.length;
     const longitudPromedio = sumaLon / ubicacionesFinales.length;
 
-    // Optimización vital: Evitar la saturación del servidor cortando envíos repetidos
-    if (bus.latitudPromedio === latitudPromedio && bus.longitudPromedio === longitudPromedio) {
-        return; 
-    }
+    if (bus.latitudPromedio === latitudPromedio && bus.longitudPromedio === longitudPromedio) return;
 
-    // Guardar el último promedio verídico en memoria para próximos usuarios que se conecten
     buses[busId].latitudPromedio = latitudPromedio;
     buses[busId].longitudPromedio = longitudPromedio;
 
-    // Disparar WebSocket exclusivamente con los datos de este bus
+    // CHEQUEO DE ALERTAS
+    checkAlertas(busId, latitudPromedio, longitudPromedio);
+
     io.emit('bus-update', {
-        busId: busId,
+        busId,
         latitudPromedio,
-        longitudPromedio
+        longitudPromedio,
+        muestras: ubicacionesFinales.length
     });
 }
 
-// Interceptor puro del Socket.IO (No requiere endpoint REST)
-io.on('connection', (socket) => {
-    console.log('Nuevo pasajero conectado al Socket:', socket.id);
+// --- MAPA DE CONTROL ANTI-SPAM POR SOCKET ---
+// Guarda el último timestamp de emisión y última posición de cada cliente
+const clienteControl = {};
 
-    // 1. Enviar ESTADO INICIAL de todos los buses a este usuario nada más conectarse
-    const estadoInicial = [];
-    for (const id in buses) {
-        if (buses[id].latitudPromedio !== null && buses[id].longitudPromedio !== null) {
-            estadoInicial.push({
-                busId: id,
-                latitudPromedio: buses[id].latitudPromedio,
-                longitudPromedio: buses[id].longitudPromedio
-            });
-        }
+// CAPA 1: Rate limiting — mínimo 2 segundos entre emisiones del mismo socket
+const INTERVALO_MINIMO_MS = 2000;
+
+// CAPA 2: Rango geográfico válido — solo acepta coordenadas de Colombia
+const GEO_LIMITES = {
+    latMin: -4.2,  latMax: 12.5,  // Sur a Norte de Colombia
+    lonMin: -82.0, lonMax: -66.8  // Oeste a Este de Colombia
+};
+
+// CAPA 3: Desplazamiento mínimo para no procesar datos estáticos repetidos
+const DESPLAZAMIENTO_MINIMO = 0.00005; // ~5 metros en grados decimales
+
+function coordenadasValidas(lat, lon) {
+    return (
+        typeof lat === 'number' && typeof lon === 'number' &&
+        isFinite(lat) && isFinite(lon) &&
+        lat >= GEO_LIMITES.latMin && lat <= GEO_LIMITES.latMax &&
+        lon >= GEO_LIMITES.lonMin && lon <= GEO_LIMITES.lonMax
+    );
+}
+
+// --- SISTEMA DE PERFILES Y RECOMPENSAS EN MEMORIA ---
+const perfiles = {}; // { userId: { nombre, puntos } }
+
+// Función helper para registrar/actualizar usuario y sumar puntos
+function sumarPuntos(userId, socketId, cantidad, nombre = null, lat = null, lon = null) {
+    if (!perfiles[userId]) {
+        perfiles[userId] = { nombre: nombre || 'Viajero Anónimo', puntos: 0, lat: lat, lon: lon };
+    } else {
+        if (nombre) perfiles[userId].nombre = nombre;
+        if (lat) perfiles[userId].lat = lat;
+        if (lon) perfiles[userId].lon = lon;
     }
-    // Emitir solamente a este usuario (socket.emit en lugar de io.emit)
-    socket.emit('estado_inicial', estadoInicial);
+    
+    perfiles[userId].puntos += cantidad;
+    
+    // Notificar al socket específico
+    if (socketId) {
+        io.to(socketId).emit('update-recompensas', { puntos: perfiles[userId].puntos });
+    }
+}
 
-    // 2. Escuchar cuando el frontend manda 'ubicacion'
-    socket.on('ubicacion', (data) => {
-        const { latitud, longitud, busId } = data;
+// Catálogo de recompensas
+const catalogoRecompensas = [
+    { id: 'destacado', nombre: 'Anuncio Destacado', costo: 10, icon: 'star' },
+    { id: 'premium', nombre: 'Publicidad Premium', costo: 20, icon: 'shield-check' }
+];
 
-        // Validar que el bus exista en nuestro ecosistema y los datos sean sanos
-        if (typeof latitud === 'number' && typeof longitud === 'number' && buses[busId]) {
-            // Se inserta la ubicación proveniente del pasajero al array de ese bus
-            buses[busId].ubicaciones.push({ latitud, longitud });
-            
-            // Mantener la memoria limpia limitando el historial de pasajeros
-            if (buses[busId].ubicaciones.length > 50) {
-                buses[busId].ubicaciones.shift();
-            }
+// Endpoint para obtener puntos y registrar nombre
+app.get('/recompensas', (req, res) => {
+    const { userId, nombre } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId requerido' });
+    
+    if (!perfiles[userId]) {
+        perfiles[userId] = { nombre: nombre || 'Viajero Anónimo', puntos: 0 };
+    } else if (nombre) {
+        perfiles[userId].nombre = nombre;
+    }
 
-            // Calcular y notificar a los mapas en vivo
-            calcularYEmitir(busId);
-        }
-    });
+    res.json({ puntos: perfiles[userId].puntos, catalogo: catalogoRecompensas });
 });
 
-// Arreglo para guardar las ubicaciones en memoria de la versión legacy
-const ubicaciones = [];
+// Endpoint para obtener ranking local
+app.get('/ranking', (req, res) => {
+    const { lat, lon } = req.query;
+    if (!lat || !lon) return res.status(400).json({ error: 'Coordenadas requeridas para ranking local' });
 
-// Historial de las últimas posiciones promedio para calcular dirección y velocidad
-const historialPromedios = [];
+    // Definir la zona actual (redondeo a 2 decimales ~1.1km)
+    const zonaUser = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
 
-// Endpoint POST para recibir y guardar la ubicación
-app.post('/ubicacion', (req, res) => {
-    const { latitud, longitud } = req.body;
+    const ranking = Object.values(perfiles)
+        .filter(p => {
+            if (!p.lat || !p.lon) return false;
+            const zonaP = `${Number(p.lat).toFixed(2)}_${Number(p.lon).toFixed(2)}`;
+            return zonaP === zonaUser;
+        })
+        .map(p => ({ nombre: p.nombre, puntos: p.puntos }))
+        .sort((a, b) => b.puntos - a.puntos)
+        .slice(0, 10);
 
-    // Validación básica
-    if (typeof latitud !== 'number' || typeof longitud !== 'number') {
-        return res.status(400).json({ error: 'Latitud y longitud son requeridas y deben ser números' });
-    }
-
-    // Guardar en memoria
-    ubicaciones.push({ latitud, longitud });
-    
-    // NOTIFICAR INMEDIATAMENTE POR WEBSOCKET A TODOS LOS CLIENTES (SIN ENVIAR DATA EXTRA, SOLO EL "TIMBRE")
-    io.emit('nueva_posicion');
-    
-    res.status(201).json({ message: 'Ubicación guardada exitosamente' });
+    res.json({ zona: zonaUser, ranking });
 });
 
-// Endpoint GET para calcular y devolver el promedio de las posiciones
-app.get('/posicion-bus', (req, res) => {
+// Endpoint para canjear recompensas
+app.post('/canjear-recompensa', (req, res) => {
+    const { userId, socketId, rewardId, puntosAdicionales } = req.body;
+    
+    if (!userId || !rewardId) return res.status(400).json({ error: 'Datos incompletos' });
 
-    // Si no hay ubicaciones, devolver valores en cero como fue solicitado (en lugar de 404)
-    if (ubicaciones.length === 0) {
-        return res.json({
-            latitudPromedio: 0,
-            longitudPromedio: 0,
-            direccion: "Desconocida",
-            velocidadKmH: 0
+    const recompensa = catalogoRecompensas.find(r => r.id === rewardId);
+    if (!recompensa) return res.status(404).json({ error: 'Recompensa no encontrada' });
+
+    // Determinar puntos totales (base + adicionales si los hay)
+    const puntosUsar = recompensa.costo + (puntosAdicionales || 0);
+
+    const puntosActuales = (perfiles[userId] && perfiles[userId].puntos) || 0;
+    if (puntosActuales < puntosUsar) {
+        return res.status(403).json({ 
+            error: 'Puntos insuficientes', 
+            mensaje: `Te faltan ${puntosUsar - puntosActuales} puntos para esta acción.` 
         });
     }
 
-    // 1. Calcular promedio preliminar
-    let sumaLatitudPreliminar = 0;
-    let sumaLongitudPreliminar = 0;
-
-    for (const ubi of ubicaciones) {
-        sumaLatitudPreliminar += ubi.latitud;
-        sumaLongitudPreliminar += ubi.longitud;
+    // LÓGICA DE CANJE
+    if (rewardId === 'destacado') {
+        const ultimoAnuncio = [...anuncios].reverse().find(a => a.userId === userId);
+        if (!ultimoAnuncio) {
+            return res.status(400).json({ error: 'No tienes anuncios para destacar.' });
+        }
+        
+        // 1 punto = 30 segundos
+        const duracionMs = puntosUsar * 30 * 1000;
+        ultimoAnuncio.destacado = true;
+        ultimoAnuncio.expiraEn = Date.now() + duracionMs;
+        
+        io.emit('anuncio-destacado', { id: ultimoAnuncio.id, expiraEn: ultimoAnuncio.expiraEn });
     }
 
-    const promedioLatPreliminar = sumaLatitudPreliminar / ubicaciones.length;
-    const promedioLonPreliminar = sumaLongitudPreliminar / ubicaciones.length;
+    // Canje exitoso
+    perfiles[userId].puntos -= puntosUsar;
+    
+    // Notificar actualización de puntos (al socketId actual si se proporcionó)
+    if (socketId) {
+        io.to(socketId).emit('update-recompensas', { puntos: perfiles[userId].puntos });
+    }
 
-    // 2. Filtrar ubicaciones que estén a más de 0.01 grados del promedio preliminar
-    const UMBRAL_DISTANCIA = 0.01;
-    const ubicacionesCercanas = ubicaciones.filter(ubi => {
-        const distanciaLat = ubi.latitud - promedioLatPreliminar;
-        const distanciaLon = ubi.longitud - promedioLonPreliminar;
-        // Distancia euclidiana aproximada en grados
-        const distancia = Math.sqrt(distanciaLat * distanciaLat + distanciaLon * distanciaLon);
-        return distancia <= UMBRAL_DISTANCIA;
+    console.log(`[CANJE] ${userId} canjeó ${recompensa.nombre} usando ${puntosUsar} puntos`);
+    res.json({ 
+        success: true, 
+        mensaje: `¡Canje exitoso! Has activado: ${recompensa.nombre}`,
+        puntosRestantes: perfiles[userId].puntos
+    });
+});
+
+// Endpoint para obtener anuncios filtrados por zona
+app.get('/anuncios', (req, res) => {
+    const { lat, lon } = req.query;
+    const ahora = Date.now();
+    
+    anuncios.forEach(ad => {
+        if (ad.destacado && ad.expiraEn && ahora > ad.expiraEn) {
+            ad.destacado = false;
+        }
     });
 
-    // Si por ningún motivo quedaron ubicaciones o algo falló, devolvemos a la lista completa
-    const ubicacionesFinales = ubicacionesCercanas.length > 0 ? ubicacionesCercanas : ubicaciones;
+    let lista = anuncios;
 
-    // 3. Calcular el promedio final solo con las ubicaciones cercanas (filtradas)
-    let sumaLatitudFinal = 0;
-    let sumaLongitudFinal = 0;
-
-    for (const ubi of ubicacionesFinales) {
-        sumaLatitudFinal += ubi.latitud;
-        sumaLongitudFinal += ubi.longitud;
+    // Si se proporcionan coordenadas, filtrar por zona
+    if (lat && lon) {
+        const zonaUser = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
+        lista = anuncios.filter(ad => {
+            const zonaAd = `${Number(ad.lat).toFixed(2)}_${Number(ad.lon).toFixed(2)}`;
+            return zonaAd === zonaUser;
+        });
     }
 
-    const promedioLatitud = sumaLatitudFinal / ubicacionesFinales.length;
-    const promedioLongitud = sumaLongitudFinal / ubicacionesFinales.length;
+    const ordenados = [...lista].sort((a, b) => (b.destacado ? 1 : 0) - (a.destacado ? 1 : 0));
+    res.json(ordenados);
+});
 
-    // 4. Calcular la dirección y velocidad del movimiento estableciendo la diferencia con el paso anterior
-    let direccion = "Desconocida";
-    let velocidadKmH = 0;
+// Endpoint para publicar anuncios
+app.post('/publicar-anuncio', (req, res) => {
+    const { titulo, descripcion, latitud, longitud, userId, socketId } = req.body;
 
-    if (historialPromedios.length > 0) {
-        const ultimaPos = historialPromedios[historialPromedios.length - 1];
+    // Validación básica
+    if (!titulo || !descripcion || !latitud || !longitud || !userId || !socketId) {
+        return res.status(400).json({ error: 'Faltan datos requeridos (título, descripción, coordenadas, userId, socketId).' });
+    }
 
-        const difLat = promedioLatitud - ultimaPos.latitud;
-        const difLon = promedioLongitud - ultimaPos.longitud;
+    // CAPA DE SEGURIDAD: Validar que el usuario ha compartido ubicación recientemente
+    const control = clienteControl[socketId];
+    const ahora = Date.now();
+    const TIEMPO_GRACIA_MS = 60000; // 60 segundos
 
-        // Umbral mínimo para considerar movimiento
-        const umbralMovimiento = 0.00001;
+    if (!control || (ahora - control.ultimoEnvio > TIEMPO_GRACIA_MS)) {
+        return res.status(403).json({ 
+            error: 'Publicación denegada.', 
+            mensaje: 'Debes compartir tu ubicación para publicar gratis.' 
+        });
+    }
 
-        let dirNorteSur = "";
-        let dirEsteOeste = "";
+    const zona = `${Number(latitud).toFixed(2)}_${Number(longitud).toFixed(2)}`;
 
-        if (difLat > umbralMovimiento) dirNorteSur = "Norte";
-        else if (difLat < -umbralMovimiento) dirNorteSur = "Sur";
+    const nuevoAnuncio = {
+        id: `ad-${Date.now()}`,
+        userId, // Guardar el ID persistente del usuario
+        titulo,
+        descripcion,
+        lat: latitud,
+        lon: longitud,
+        zona, // Guardar la zona geográfica
+        destacado: false, // Por defecto normal
+        timestamp: ahora,
+        vistas: 0,
+        clicks: 0
+    };
 
-        if (difLon > umbralMovimiento) dirEsteOeste = "Este";
-        else if (difLon < -umbralMovimiento) dirEsteOeste = "Oeste";
+    anuncios.push(nuevoAnuncio);
+    
+    // RECOMPENSA: +5 puntos por publicar (usando userId)
+    sumarPuntos(userId, socketId, 5);
 
-        if (dirNorteSur !== "" || dirEsteOeste !== "") {
-            if (dirNorteSur === "Norte" && dirEsteOeste === "Este") direccion = "Noreste";
-            else if (dirNorteSur === "Norte" && dirEsteOeste === "Oeste") direccion = "Noroeste";
-            else if (dirNorteSur === "Sur" && dirEsteOeste === "Este") direccion = "Sureste";
-            else if (dirNorteSur === "Sur" && dirEsteOeste === "Oeste") direccion = "Suroeste";
-            else direccion = dirNorteSur || dirEsteOeste;
-        } else {
-            direccion = "Detenido";
-        }
+    // Limitar anuncios en memoria (ej. últimos 100)
+    if (anuncios.length > 100) anuncios.shift();
 
-        // Calcular la velocidad aproximada
-        // (Aproximación donde 1 grado de diferencia equivale más o menos a 111 kilómetros)
-        const distanciaKm = Math.sqrt(difLat * difLat + difLon * difLon) * 111;
-
-        // El tiempo transcurrido en horas es milisegundos / 1000 / 3600 => milisegundos / 3600000
-        const horasTranscurridas = (Date.now() - ultimaPos.timestamp) / 3600000;
-
-        if (horasTranscurridas > 0) {
-            velocidadKmH = distanciaKm / horasTranscurridas;
+    // NOTIFICAR SOLO A USUARIOS EN LA MISMA ZONA
+    for (const [id, s] of io.sockets.sockets) {
+        const ctrl = clienteControl[id];
+        if (ctrl) {
+            const zonaUser = `${ctrl.ultimaLat.toFixed(2)}_${ctrl.ultimaLon.toFixed(2)}`;
+            if (zonaUser === zona) {
+                s.emit('nuevo-anuncio', nuevoAnuncio);
+            }
         }
     }
 
-    // Guardar el promedio actual en el historial incluyendo la estampa de tiempo actual
-    historialPromedios.push({
-        latitud: promedioLatitud,
-        longitud: promedioLongitud,
-        timestamp: Date.now()
+    console.log(`[ANUNCIO] Publicado en zona ${zona} por ${userId}: ${titulo}`);
+    res.status(201).json({ success: true, anuncio: nuevoAnuncio });
+});
+
+// Endpoints de Analítica
+app.post('/anuncio-visto', (req, res) => {
+    const { id } = req.body;
+    const ad = anuncios.find(a => a.id === id);
+    if (ad) {
+        ad.vistas++;
+        res.json({ success: true, vistas: ad.vistas });
+    } else {
+        res.status(404).json({ error: 'Anuncio no encontrado' });
+    }
+});
+
+app.post('/anuncio-click', (req, res) => {
+    const { id } = req.body;
+    const ad = anuncios.find(a => a.id === id);
+    if (ad) {
+        ad.clicks++;
+        res.json({ success: true, clicks: ad.clicks });
+    } else {
+        res.status(404).json({ error: 'Anuncio no encontrado' });
+    }
+});
+
+// --- SISTEMA DE COMENTARIOS POR ZONA ---
+const comentarios = []; // { userId, nombre, mensaje, lat, lon, zona, timestamp }
+
+app.post('/comentarios', (req, res) => {
+    const { userId, nombre, mensaje, lat, lon, parentId } = req.body;
+    if (!mensaje || !lat || !lon || !userId || !nombre) {
+        return res.status(400).json({ error: 'Faltan datos (mensaje, ubicación, identidad).' });
+    }
+
+    const zona = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
+    const nuevoComentario = {
+        id: `c-${Date.now()}`,
+        userId,
+        nombre,
+        mensaje,
+        lat,
+        lon,
+        zona,
+        parentId: parentId || null,
+        timestamp: Date.now(),
+        likes: 0,
+        likedBy: [] // Lista de userId que dieron like
+    };
+
+    comentarios.push(nuevoComentario);
+    if (comentarios.length > 500) comentarios.shift(); // Limitar memoria
+
+    // Notificar en tiempo real a la zona
+    for (const [id, s] of io.sockets.sockets) {
+        const ctrl = clienteControl[id];
+        if (ctrl) {
+            const zonaUser = `${ctrl.ultimaLat.toFixed(2)}_${ctrl.ultimaLon.toFixed(2)}`;
+            if (zonaUser === zona) {
+                s.emit('nuevo-comentario', nuevoComentario);
+            }
+        }
+    }
+
+    res.status(201).json({ success: true, comentario: nuevoComentario });
+});
+
+app.post('/like-comentario', (req, res) => {
+    const { comentarioId, userId } = req.body;
+    const comentario = comentarios.find(c => c.id === comentarioId);
+    
+    if (!comentario) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+    const index = comentario.likedBy.indexOf(userId);
+    let action = 'like';
+
+    if (index === -1) {
+        // Dar like
+        comentario.likedBy.push(userId);
+        comentario.likes++;
+    } else {
+        // Quitar like (toggle)
+        comentario.likedBy.splice(index, 1);
+        comentario.likes--;
+        action = 'unlike';
+    }
+
+    // Notificar cambio en tiempo real
+    io.emit('like-update', { id: comentarioId, likes: comentario.likes });
+
+    res.json({ success: true, likes: comentario.likes, action });
+});
+
+app.get('/comentarios', (req, res) => {
+    const { lat, lon, sort } = req.query;
+    if (!lat || !lon) return res.status(400).json({ error: 'Coordenadas requeridas.' });
+
+    const zonaUser = `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
+    const locales = comentarios.filter(c => c.zona === zonaUser);
+    
+    // Organizar en árbol (2 niveles: principal -> respuestas)
+    let principales = locales.filter(c => !c.parentId);
+
+    if (sort === 'popular') {
+        principales.sort((a, b) => (b.likes - a.likes) || (b.timestamp - a.timestamp));
+    } else {
+        principales.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    
+    principales = principales.slice(0, 30);
+    
+    const arbol = principales.map(p => {
+        return {
+            ...p,
+            respuestas: locales
+                .filter(r => r.parentId === p.id)
+                .sort((a, b) => b.likes - a.likes)
+        };
     });
 
-    // Mantener solo las últimas 5 posiciones
-    if (historialPromedios.length > 5) {
-        historialPromedios.shift();
-    }
+    res.json(arbol);
+});
 
-    // 5. Calcular tiempo de llegada estimado (ETA) si el usuario mandó sus coordenadas
-    let tiempoEstimadoMinutos = null;
-    const { userLat, userLon } = req.query;
+// --- EVENTOS SOCKET.IO ---
+io.on('connection', (socket) => {
+    console.log('Pasajero conectado:', socket.id);
 
-    if (userLat !== undefined && userLon !== undefined) {
-        const uLat = parseFloat(userLat);
-        const uLon = parseFloat(userLon);
+    // Inicializar control de calidad para este socket
+    clienteControl[socket.id] = { ultimoEnvio: 0, ultimaLat: null, ultimaLon: null };
 
-        if (!isNaN(uLat) && !isNaN(uLon)) {
-            const dLat = promedioLatitud - uLat;
-            const dLon = promedioLongitud - uLon;
-
-            // Distancia directa aprox en kilómetros
-            const distanciaUsuarioKm = Math.sqrt(dLat * dLat + dLon * dLon) * 111;
-
-            // Usar velocidad base de 20 km/h si el bus está detenido o casi detenido
-            const velocidadEfectiva = velocidadKmH > 0.5 ? velocidadKmH : 20;
-
-            const tiempoHoras = distanciaUsuarioKm / velocidadEfectiva;
-            tiempoEstimadoMinutos = Math.ceil(tiempoHoras * 60);
+    // Enviar el estado actual (buses y anuncios) al cliente recién conectado
+    const estadoBuses = [];
+    for (const id in buses) {
+        if (buses[id].latitudPromedio !== null && buses[id].longitudPromedio !== null) {
+            estadoBuses.push({
+                busId: id,
+                latitudPromedio: buses[id].latitudPromedio,
+                longitudPromedio: buses[id].longitudPromedio,
+                muestras: buses[id].ubicaciones.length
+            });
         }
     }
+    
+    socket.emit('estado_inicial', {
+        buses: estadoBuses,
+        anuncios: anuncios
+    });
 
-    res.json({
-        latitudPromedio: promedioLatitud,
-        longitudPromedio: promedioLongitud,
-        direccion: direccion,
-        velocidadKmH: Number(velocidadKmH.toFixed(2)),
-        tiempoEstimado: tiempoEstimadoMinutos
+    // Recibir ubicación GPS del pasajero con validación estricta
+    socket.on('ubicacion', (data) => {
+        const { latitud, longitud, busId } = data;
+        const control = clienteControl[socket.id];
+        const ahora = Date.now();
+
+        // CAPA 1: Throttle — rechazar si llegó demasiado pronto
+        if (ahora - control.ultimoEnvio < INTERVALO_MINIMO_MS) return;
+
+        // CAPA 2: Rango geográfico — rechazar coordenadas fuera de Colombia
+        if (!coordenadasValidas(latitud, longitud)) {
+            console.warn(`[RECHAZADO] Coordenadas fuera de rango desde ${socket.id}: (${latitud}, ${longitud})`);
+            return;
+        }
+
+        // CAPA 3: Desplazamiento mínimo — rechazar si el usuario no se movió
+        if (control.ultimaLat !== null) {
+            const dLat = Math.abs(latitud - control.ultimaLat);
+            const dLon = Math.abs(longitud - control.ultimaLon);
+            if (dLat < DESPLAZAMIENTO_MINIMO && dLon < DESPLAZAMIENTO_MINIMO) return;
+        }
+
+        // CAPA 4: Bus válido en el ecosistema
+        if (!buses[busId]) {
+            console.warn(`[RECHAZADO] busId inválido desde ${socket.id}: ${busId}`);
+            return;
+        }
+
+        // ✅ Dato aprobado — actualizar control y procesar
+        control.ultimoEnvio = ahora;
+        control.ultimaLat = latitud;
+        control.ultimaLon = longitud;
+
+        buses[busId].ubicaciones.push({ latitud, longitud });
+        
+        // RECOMPENSA: +1 punto por compartir ubicación (vínculo persistente con userId y actualización de zona)
+        if (data.userId) {
+            sumarPuntos(data.userId, socket.id, 1, null, latitud, longitud);
+        }
+
+        // Limitar historial a 50 entradas para no saturar memoria
+        if (buses[busId].ubicaciones.length > 50) {
+            buses[busId].ubicaciones.shift();
+        }
+
+        calcularYEmitir(busId);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Pasajero desconectado:', socket.id);
+        // Limpiar memoria del control al desconectarse
+        delete clienteControl[socket.id];
     });
 });
 
 const PORT = process.env.PORT || 3000;
 
-// Reemplazo vital: Usar "server.listen" en vez de "app.listen" para arrancar juntos tanto WebSockets como Express
 server.listen(PORT, () => {
-    console.log(`Servidor Híbrido HTTP + WebSockets corriendo en el puerto ${PORT}`);
+    console.log(`SafeRoute Backend corriendo en el puerto ${PORT}`);
 });
