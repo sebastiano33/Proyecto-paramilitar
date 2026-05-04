@@ -1,30 +1,30 @@
 const express = require('express');
+const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const server = http.createServer(app);
-
-const cors = require('cors');
-
-app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST'],
-  credentials: true
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+app.options('*', cors());
 
 app.use(express.json());
 
+const server = http.createServer(app);
+
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  },
-  transports: ['websocket', 'polling']
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    },
+    transports: ['websocket', 'polling']
 });
 
 app.get('/', (req, res) => {
