@@ -13,7 +13,7 @@ app.set('trust proxy', 1);
 
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST'],
     credentials: true
 }));
 
@@ -135,7 +135,9 @@ setInterval(() => {
 }, 60000);
 
 // --- ENDPOINTS ---
-app.get('/routes', (req, res) => res.json(transitData.routes));
+app.get('/routes', (req, res) => {
+    res.json(transitData.routes || transitData);
+});
 
 app.get('/buses', (req, res) => {
     const list = Object.keys(buses).map(id => ({
