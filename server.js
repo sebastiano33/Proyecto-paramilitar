@@ -7,13 +7,16 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Configurar CORS globalmente
 const cors = require('cors');
+
+app.set('trust proxy', 1);
+
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'DELETE', 'PUT'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }));
+
 app.use(express.json());
 
 // Configurar Socket.io
