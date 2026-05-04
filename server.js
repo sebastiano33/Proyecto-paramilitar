@@ -6,10 +6,32 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: "*" } });
 
+// Configurar CORS globalmente
+const cors = require('cors');
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'DELETE', 'PUT'],
+    credentials: true
+}));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend-map')));
+
+// Configurar Socket.io
+const io = socketIo(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    },
+    transports: ['websocket', 'polling']
+});
+
+// --- RUTA BASE PARA RENDER ---
+app.get('/', (req, res) => {
+    res.send('SafeRoute API funcionando');
+});
+
+// Los endpoints de API deben estar ANTES del middleware estático para evitar "Unexpected token <"
+// (Se asume que el resto del archivo sigue aquí...)
 
 // --- CARGAR DATOS DE TRANSPORTE (JSON) ---
 let transitData = { routes: [] };
@@ -463,8 +485,7 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`SafeRoute Backend en puerto ${PORT}`));
+
 
 // --- ADMIN & EXPORT SYSTEM ---
 const apiKeyMiddleware = (req, res, next) => {
@@ -624,4 +645,12 @@ app.delete('/trips/:token', (req, res) => {
 
 app.get('/viaje/:token', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend-map/shared_trip.html'));
+});
+
+// ARCHIVOS ESTÁTICOS AL FINAL
+app.use(express.static(path.join(__dirname, '../frontend-map')));
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });
