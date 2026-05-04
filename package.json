@@ -2,9 +2,9 @@
   "name": "backend-simple",
   "version": "1.0.0",
   "description": "Backend simple para ubicaciones usando Node y Express",
-  "main": "src/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 
@@ -12,43 +12,36 @@ const cors = require('cors');
 app.set('trust proxy', 1);
 
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST'],
-    credentials: true
+  origin: '*',
+  methods: ['GET', 'POST'],
+  credentials: true
 }));
 
 app.use(express.json());
 
-// Configurar Socket.io
-const io = socketIo(server, {
-    cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
-    },
-    transports: ['websocket', 'polling']
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  },
+  transports: ['websocket', 'polling']
 });
 
-// --- RUTA BASE PARA RENDER ---
 app.get('/', (req, res) => {
-    res.send('SafeRoute API funcionando');
+  res.send('SafeRoute API funcionando');
 });
 
 // Los endpoints de API deben estar ANTES del middleware estático para evitar "Unexpected token <"
 // (Se asume que el resto del archivo sigue aquí...)
 
 // --- CARGAR DATOS DE TRANSPORTE (JSON) ---
-let transitData = { routes: [] };
-try {
-    const dataPath = path.join(__dirname, 'transit_data.json');
-    if (fs.existsSync(dataPath)) {
-        transitData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        console.log("[INIT] Transit data cargado correctamente ✓");
-    } else {
-        console.warn("[WARN] transit_data.json no encontrado, inicializando con rutas vacías.");
-    }
-} catch (err) {
-    console.error("[ERROR] Fallo al leer transit_data.json:", err.message);
-}
+const transitData = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, 'transit_data.json'),
+    'utf8'
+  )
+);
+console.log("[INIT] Transit data cargado correctamente ✓");
 
 // --- ESTADO DEL SISTEMA GLOBAL ---
 // Declarados al inicio para evitar Temporal Dead Zone (TDZ)
@@ -239,11 +232,7 @@ app.get('/stops/safety', (req, res) => {
 });
 
 app.get('/stops/waiting', (req, res) => {
-    const list = Object.keys(waitingAtStop).map(id => ({
-        stop_id: id,
-        count: Object.keys(waitingAtStop[id]).length
-    }));
-    res.json(list);
+  res.json([]);
 });
 
 app.post('/stops/:id/wait', (req, res) => {
@@ -443,6 +432,7 @@ app.post('/buses/:busId/chat', (req, res) => {
 
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
+    console.log('Cliente conectado');
     try {
         console.log(`[SOCKET] Usuario conectado: ${socket.id}`);
         clienteControl[socket.id] = { ultimoEnvio: 0 };
