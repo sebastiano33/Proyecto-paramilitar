@@ -23,7 +23,7 @@ router.get('/feed', optionalAuth, catchAsync(async (req, res) => {
         };
     }));
 
-    res.json({ success: true, posts: enriched });
+    res.json(enriched);
 }));
 
 router.post('/posts', authenticateToken, catchAsync(async (req, res) => {
@@ -34,6 +34,18 @@ router.post('/posts', authenticateToken, catchAsync(async (req, res) => {
 router.post('/posts/:postId/react', authenticateToken, catchAsync(async (req, res) => {
     const reactions = await socialService.reactToPost(req.params.postId, req.user.id, req.body.reaction);
     res.json({ success: true, reactions });
+}));
+
+router.get('/trending', optionalAuth, catchAsync(async (req, res) => {
+    // Mock de tendencias basado en paradas populares
+    const trends = {
+        stops: [
+            ['Portal Transcaribe', Math.floor(Math.random() * 50)],
+            ['Bazurto', Math.floor(Math.random() * 40)],
+            ['Centro Histórico', Math.floor(Math.random() * 30)]
+        ]
+    };
+    res.json(trends);
 }));
 
 module.exports = router;

@@ -39,7 +39,28 @@ class TransitService {
     }
 
     getAllRoutes() {
-        return this.transitData.routes || this.transitData;
+        const data = this.transitData.routes || this.transitData;
+        if (!Array.isArray(data)) return [];
+        
+        return data.map(route => ({
+            ...route,
+            color: route.color || this.getRouteColor(route.id),
+            path: route.path || (route.stops ? route.stops.map(s => [s.lat, s.lng]) : [])
+        }));
+    }
+
+    getRouteColor(id) {
+        const colors = {
+            'T100E': '#ef4444', // Rojo Expresa
+            'T101': '#3b82f6',  // Azul
+            'T102': '#10b981',  // Verde
+            'T103': '#f59e0b',  // Ambar
+            'X101': '#8b5cf6',  // Violeta
+            'X102': '#ec4899',  // Rosa
+            'X104': '#06b6d4',  // Cian
+            'X105': '#f97316'   // Naranja
+        };
+        return colors[id] || '#6366f1';
     }
 
     getWaitingStops() {

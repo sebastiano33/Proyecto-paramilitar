@@ -14,6 +14,7 @@ const server = http.createServer(app);
 
 // 3. Realtime Engine (Socket.io)
 const io = new Server(server, SOCKET_OPTIONS);
+app.io = io; // Permitir acceso desde la app para rutas internas
 socketHandler(io);
 
 // 4. Initializations

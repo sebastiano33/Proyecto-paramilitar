@@ -31,6 +31,19 @@ app.use('/uploads', express.static('uploads'));
 app.get('/', (req, res) => res.status(200).json({ status: 'ok', message: 'SafeRoute API funcionando' }));
 app.get('/health', (req, res) => res.status(200).json({ status: 'success', message: 'API Online' }));
 
+// 4. Internal Simulation Routes (Protegido por secreto)
+app.post('/internal/bus-update', (req, res) => {
+    const secret = req.headers['x-internal-key'];
+    if (secret !== 'sr_dev_secret_2026') return res.status(403).json({ error: 'No autorizado' });
+
+    const busData = req.body;
+    if (app.io) {
+        // Usar la función de emisión global definida en socketHandler
+        app.io.emitBusPosition(busData);
+    }
+    res.json({ status: 'sent' });
+});
+
 // Auth & Users
 app.use(`${base}/auth`, authRoutes);
 app.use(`${base}/users`, authenticateToken, userRoutes);
