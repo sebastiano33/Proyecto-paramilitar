@@ -8,31 +8,39 @@ const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
+    const guestUser = { 
+        id: 'guest-user', 
+        nickname: 'Invitado', 
+        role: 'guest', 
+        avatar: '👤', 
+        reputationScore: 0,
+        isGuest: true 
+    };
+
     if (!token) {
-        return res.status(401).json({
-            success: false,
-            error: { code: 'AUTH_004', message: 'Token no proporcionado' }
-        });
+        req.user = guestUser;
+        return next();
     }
 
-    const decoded = verifyToken(token);
-    if (!decoded) {
-        return res.status(403).json({
-            success: false,
-            error: { code: 'AUTH_003', message: 'Token inválido o expirado' }
-        });
-    }
+    try {
+        const decoded = verifyToken(token);
+        if (!decoded) {
+            req.user = guestUser;
+            return next();
+        }
 
-    const user = await userRepository.findById(decoded.id);
-    if (!user) {
-        return res.status(404).json({
-            success: false,
-            error: { code: 'AUTH_004', message: 'Usuario no encontrado' }
-        });
-    }
+        const user = await userRepository.findById(decoded.id);
+        if (!user) {
+            req.user = guestUser;
+            return next();
+        }
 
-    req.user = user;
-    next();
+        req.user = user;
+        next();
+    } catch (e) {
+        req.user = guestUser;
+        next();
+    }
 };
 
 /**
