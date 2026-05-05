@@ -1,32 +1,36 @@
 const BusService = require('../services/BusService');
 const TransitService = require('../services/TransitService');
+const SocialService = require('../services/SocialService');
 
 const socketHandler = (io) => {
     io.on('connection', (socket) => {
         console.log(`[Socket] Cliente conectado: ${socket.id}`);
 
-        // Evento: Actualización de ubicación de bus (de conductor o simulador)
+        // --- Eventos de Transporte ---
         socket.on('bus_location_update', (data) => {
-            const { busId, lat, lon } = data;
-            const updatedBus = BusService.updateLocation(busId, { lat, lon });
-            
-            // Emitir a todos los pasajeros interesados
+            const updatedBus = BusService.updateLocation(data.busId, data);
             io.emit('bus_update', updatedBus);
         });
 
-        // Evento: Usuario esperando en parada
         socket.on('user_waiting', (data) => {
-            const { stopName } = data;
-            const update = TransitService.registerWaiting(stopName);
-            
-            // Notificar a todos sobre la actualización de la parada
+            const update = TransitService.registerWaiting(data.stopName);
             io.emit('stop_updated', update);
         });
 
-        // Evento: Viaje compartido
-        socket.on('trip_shared', (data) => {
-            console.log(`[Socket] Viaje compartido: ${data.token}`);
-            // Podría usarse para rooms específicos en el futuro
+        // --- Eventos de Red Social ---
+        socket.on('new_post', (data) => {
+            const post = SocialService.createPost(data);
+            io.emit('social_new_post', post);
+        });
+
+        socket.on('new_comment', (data) => {
+            const comment = SocialService.addComment(data.postId, data);
+            if (comment) io.emit('social_new_comment', { postId: data.postId, comment });
+        });
+
+        socket.on('add_reaction', (data) => {
+            const reactions = SocialService.addReaction(data.postId, data.type);
+            if (reactions) io.emit('social_reaction_update', { postId: data.postId, reactions });
         });
 
         socket.on('disconnect', () => {

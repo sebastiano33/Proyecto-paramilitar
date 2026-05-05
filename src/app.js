@@ -12,12 +12,14 @@ app.use(express.json());
 const coreRoutes = require('./routes/core.routes');
 const tripsRoutes = require('./routes/trips.routes');
 const adminRoutes = require('./routes/admin.routes');
+const socialRoutes = require('./routes/social.routes');
 
 // Registrar Rutas
 app.get('/', (req, res) => res.send('SafeRoute API Uber-Style Realtime funcionando'));
 app.use('/', coreRoutes);
 app.use('/trips', tripsRoutes);
 app.use('/admin', adminRoutes);
+app.use('/social', socialRoutes);
 
 // Manejo de 404
 app.use((req, res) => {
