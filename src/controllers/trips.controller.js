@@ -1,17 +1,23 @@
+const TripService = require('../services/TripService');
+
 exports.shareTrip = (req, res) => {
     const { destination } = req.body;
-    console.log(`[Trips] Creando viaje compartido hacia: ${destination}`);
+    const trip = TripService.createTrip({ destination });
+    
     res.json({ 
         success: true,
-        shareUrl: 'https://proyecto-paramilitar.onrender.com/viaje.html', 
-        token: 'dummy-token-' + Math.random().toString(36).substr(2, 9)
+        shareUrl: `https://proyecto-paramilitar.onrender.com/viaje.html?t=${trip.token}`, 
+        token: trip.token 
     });
 };
 
 exports.getTripStatus = (req, res) => {
-    res.json({ expired: true, message: "Viaje simulado (modo API limpia)" });
+    const { token } = req.params;
+    res.json(TripService.getTrip(token));
 };
 
 exports.endTrip = (req, res) => {
+    const { token } = req.params;
+    TripService.deleteTrip(token);
     res.json({ success: true, message: "Viaje finalizado" });
 };

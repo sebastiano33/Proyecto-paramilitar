@@ -1,15 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const { CORS_OPTIONS } = require('./config');
 
 const app = express();
 
-// Configuración de CORS
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+// Middlewares
+app.use(cors(CORS_OPTIONS));
 app.use(express.json());
 
 // Importar Rutas
@@ -18,25 +14,25 @@ const tripsRoutes = require('./routes/trips.routes');
 const adminRoutes = require('./routes/admin.routes');
 
 // Registrar Rutas
-app.get('/', (req, res) => res.send('SafeRoute API Profesional funcionando'));
+app.get('/', (req, res) => res.send('SafeRoute API Uber-Style Realtime funcionando'));
 app.use('/', coreRoutes);
 app.use('/trips', tripsRoutes);
 app.use('/admin', adminRoutes);
 
-// Middleware para capturar rutas no encontradas (404) y devolver JSON
+// Manejo de 404
 app.use((req, res) => {
     res.status(404).json({ 
         error: "Ruta no encontrada", 
-        message: `El endpoint ${req.originalUrl} no existe en esta API.` 
+        message: `El endpoint ${req.originalUrl} no existe.` 
     });
 });
 
-// Middleware global para manejo de errores (evita respuestas HTML en errores 500)
+// Manejo de errores 500
 app.use((err, req, res, next) => {
     console.error('[Error Global]', err.stack);
     res.status(500).json({ 
         error: "Error interno del servidor", 
-        message: "Ocurrió un error inesperado. Por favor, intenta más tarde." 
+        message: "Error inesperado en la API." 
     });
 });
 
