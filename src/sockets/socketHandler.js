@@ -1,42 +1,58 @@
-const BusService = require('../services/BusService');
-const TransitService = require('../services/TransitService');
-const SocialService = require('../services/SocialService');
+const gpsStore = require('../services/gpsStore');
 
 const socketHandler = (io) => {
+    // Middleware de Auth (Ya implementado anteriormente)
+
     io.on('connection', (socket) => {
-        console.log(`[Socket] Cliente conectado: ${socket.id}`);
+        const status = socket.user ? `Identificado como ${socket.user.username}` : 'Anónimo';
+        console.log(`[Socket] Cliente conectado: ${socket.id} (${status})`);
 
-        // --- Eventos de Transporte ---
-        socket.on('bus_location_update', (data) => {
-            const updatedBus = BusService.updateLocation(data.busId, data);
-            io.emit('bus_update', updatedBus);
+        // Unir a room privado para notificaciones de reputación
+        if (socket.user) {
+            socket.join(`user:${socket.user.id}`);
+        }
+
+        // 1. Suscribirse a una ruta específica
+        socket.on('subscribe:route', async ({ routeId }) => {
+            const room = `gps:route:${routeId}`;
+            socket.join(room);
+
+            // Enviar estado inicial de buses en esa ruta
+            const activeBuses = await gpsStore.getBusesByRoute(routeId);
+            socket.emit('route:buses', activeBuses);
+
+            console.log(`[Socket] ${socket.id} unido a ${room}`);
         });
 
-        socket.on('user_waiting', (data) => {
-            const update = TransitService.registerWaiting(data.stopName);
-            io.emit('stop_updated', update);
+        // 2. Desuscribirse de una ruta
+        socket.on('unsubscribe:route', ({ routeId }) => {
+            const room = `gps:route:${routeId}`;
+            socket.leave(room);
+            console.log(`[Socket] ${socket.id} salió de ${room}`);
         });
 
-        // --- Eventos de Red Social ---
-        socket.on('new_post', (data) => {
-            const post = SocialService.createPost(data);
-            io.emit('social_new_post', post);
-        });
+        // 3. Actualización directa desde conductor (Driver role)
+        socket.on('bus:update', async (data) => {
+            if (!socket.user || socket.user.role !== 'driver') return;
 
-        socket.on('new_comment', (data) => {
-            const comment = SocialService.addComment(data.postId, data);
-            if (comment) io.emit('social_new_comment', { postId: data.postId, comment });
-        });
+            const updatedBus = await gpsStore.updatePosition(data.busId, {
+                ...data,
+                driverId: socket.user.id
+            });
 
-        socket.on('add_reaction', (data) => {
-            const reactions = SocialService.addReaction(data.postId, data.type);
-            if (reactions) io.emit('social_reaction_update', { postId: data.postId, reactions });
+            // Broadcast a la room de la ruta
+            io.to(`gps:route:${data.routeId}`).emit('bus:position', updatedBus);
         });
 
         socket.on('disconnect', () => {
-            console.log(`[Socket] Cliente desconectado: ${socket.id}`);
+            console.log(`[Socket] Desconectado: ${socket.id}`);
         });
     });
+
+    // Función global para emitir desde procesos internos (Simulador/API)
+    io.emitBusPosition = (busData) => {
+        io.to(`gps:route:${busData.routeId}`).emit('bus:position', busData);
+    };
 };
 
 module.exports = socketHandler;

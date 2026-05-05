@@ -1,65 +1,113 @@
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const reputationService = require('./ReputationService');
+
 class SocialService {
     constructor() {
-        this.posts = []; // { id, userId, nickname, avatar, type, message, routeId, stopName, timestamp, reactions: {}, comments: [] }
-        this.trendingData = {
-            stops: new Map(),
-            routes: new Map()
-        };
+        this.postsPath = path.join(__dirname, '../data/posts.json');
+        this.commentsPath = path.join(__dirname, '../data/comments.json');
+        this.posts = [];
+        this.comments = [];
+        this.maxPosts = 500;
+        this.loadData();
+        this.startExpirationJob();
     }
 
-    createPost(data) {
+    loadData() {
+        try {
+            if (fs.existsSync(this.postsPath)) this.posts = JSON.parse(fs.readFileSync(this.postsPath, 'utf8'));
+            if (fs.existsSync(this.commentsPath)) this.comments = JSON.parse(fs.readFileSync(this.commentsPath, 'utf8'));
+        } catch (e) { console.error('[SocialService] Error loading data:', e); }
+    }
+
+    saveData() {
+        // Rotar posts si exceden el límite
+        if (this.posts.length > this.maxPosts) {
+            this.posts = this.posts.slice(-this.maxPosts);
+        }
+        fs.writeFileSync(this.postsPath, JSON.stringify(this.posts, null, 2));
+        fs.writeFileSync(this.commentsPath, JSON.stringify(this.comments, null, 2));
+    }
+
+    async createPost(data, authorId) {
         const post = {
-            id: Math.random().toString(36).substr(2, 9),
-            timestamp: new Date(),
-            reactions: { useful: 0, arrived: 0, alert: 0, thanks: 0 },
-            comments: [],
+            id: uuidv4(),
+            authorId,
+            reactions: { like: 0, useful: 0, warning: 0, laugh: 0 },
+            userReactions: {},
+            commentsCount: 0,
+            shareCount: 0,
+            views: 0,
+            isActive: true,
+            createdAt: new Date(),
             ...data
         };
-        this.posts.unshift(post); // El más nuevo al principio
-        
-        // Actualizar tendencias
-        if (data.stopName) {
-            const count = this.trendingData.stops.get(data.stopName) || 0;
-            this.trendingData.stops.set(data.stopName, count + 1);
+
+        if (post.type === 'alert' && post.alertData) {
+            const durations = { accident: 120, road_block: 120, bus_delay: 45, bus_full: 30, bus_missing: 30 };
+            const minutes = durations[post.alertData.category] || 60;
+            post.alertData.expiresAt = new Date(Date.now() + minutes * 60000);
+            await reputationService.addReputation(authorId, 'ALERT_VERIFIED', post.id, 'alert');
         }
 
+        this.posts.push(post);
+        this.saveData();
         return post;
     }
 
-    addComment(postId, commentData) {
+    async reactToPost(postId, userId, reactionType) {
         const post = this.posts.find(p => p.id === postId);
         if (!post) return null;
 
-        const comment = {
-            id: Math.random().toString(36).substr(2, 9),
-            timestamp: new Date(),
-            ...commentData
-        };
-        post.comments.push(comment);
-        return comment;
-    }
+        const currentReaction = post.userReactions[userId];
+        
+        if (currentReaction === reactionType) {
+            // Toggle off
+            delete post.userReactions[userId];
+            post.reactions[reactionType]--;
+        } else {
+            // Change or add
+            if (currentReaction) post.reactions[currentReaction]--;
+            post.userReactions[userId] = reactionType;
+            post.reactions[reactionType]++;
+        }
 
-    addReaction(postId, type) {
-        const post = this.posts.find(p => p.id === postId);
-        if (!post || !post.reactions.hasOwnProperty(type)) return null;
-
-        post.reactions[type]++;
+        this.saveData();
         return post.reactions;
     }
 
-    getFeed() {
-        return this.posts.slice(0, 50); // Últimos 50 posts
+    startExpirationJob() {
+        setInterval(() => {
+            const now = new Date();
+            let changed = false;
+            this.posts.forEach(post => {
+                if (post.type === 'alert' && post.isActive && post.alertData.expiresAt) {
+                    if (new Date(post.alertData.expiresAt) < now) {
+                        post.isActive = false;
+                        changed = true;
+                        // Emitir via IO (se manejará en el socketHandler)
+                        console.log(`[SocialService] Alert ${post.id} expired`);
+                    }
+                }
+            });
+            if (changed) this.saveData();
+        }, 60000);
     }
 
-    getTrending() {
-        return {
-            stops: Array.from(this.trendingData.stops.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5),
-            routes: Array.from(this.trendingData.routes.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5)
-        };
+    getFeed(query) {
+        let filtered = this.posts.filter(p => p.isActive);
+        
+        if (query.scope === 'route') filtered = filtered.filter(p => p.location.routeId === query.routeId);
+        if (query.scope === 'stop') filtered = filtered.filter(p => p.location.stopId === query.stopId);
+        
+        // Ordenar: Alertas high severity primero, luego cronológico
+        return filtered.sort((a, b) => {
+            const aSev = a.type === 'alert' && a.alertData.severity === 'high' ? 1 : 0;
+            const bSev = b.type === 'alert' && b.alertData.severity === 'high' ? 1 : 0;
+            if (aSev !== bSev) return bSev - aSev;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
     }
 }
 

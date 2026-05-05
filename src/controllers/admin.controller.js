@@ -1,4 +1,14 @@
+const AdminService = require('../services/AdminService');
 const BusService = require('../services/BusService');
+
+exports.getStats = async (req, res) => {
+    try {
+        const stats = await AdminService.getDashboardStats();
+        res.json(stats);
+    } catch (err) {
+        res.status(500).json({ error: 'Error al obtener estadísticas' });
+    }
+};
 
 exports.getBuses = (req, res) => {
     res.json(BusService.getAllActiveBuses());

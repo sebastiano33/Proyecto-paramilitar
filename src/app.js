@@ -1,41 +1,60 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const { CORS_OPTIONS } = require('./config');
+const ErrorHandler = require('./middleware/error.middleware');
 
 const app = express();
 
-// Middlewares
+// 1. Security Middlewares
+app.use(helmet()); // Seguridad de headers
 app.use(cors(CORS_OPTIONS));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
-// Importar Rutas
+// 2. Route Imports
+const authRoutes = require('./routes/auth');
 const coreRoutes = require('./routes/core.routes');
 const tripsRoutes = require('./routes/trips.routes');
-const adminRoutes = require('./routes/admin.routes');
 const socialRoutes = require('./routes/social.routes');
+const adminRoutes = require('./routes/admin.routes');
+const predictionRoutes = require('./routes/prediction.routes');
+const userRoutes = require('./routes/user.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
+const complaintsRoutes = require('./routes/complaints');
+const tripPlannerController = require('./controllers/tripPlanner.controller');
+const { authenticateToken, requireRole } = require('./middleware/auth');
 
-// Registrar Rutas
-app.get('/', (req, res) => res.send('SafeRoute API Uber-Style Realtime funcionando'));
-app.use('/', coreRoutes);
-app.use('/trips', tripsRoutes);
-app.use('/admin', adminRoutes);
-app.use('/social', socialRoutes);
+// 3. API Registration (v1)
+const base = '/api/v1';
 
-// Manejo de 404
-app.use((req, res) => {
-    res.status(404).json({ 
-        error: "Ruta no encontrada", 
-        message: `El endpoint ${req.originalUrl} no existe.` 
-    });
+app.use('/uploads', express.static('uploads'));
+app.get('/health', (req, res) => res.status(200).json({ status: 'success', message: 'API Online' }));
+
+// Auth & Users
+app.use(`${base}/auth`, authRoutes);
+app.use(`${base}/users`, authenticateToken, userRoutes);
+app.use(`${base}/analytics`, authenticateToken, analyticsRoutes);
+app.use(`${base}/complaints`, complaintsRoutes);
+
+
+
+
+// Protected Routes
+app.use(`${base}/predictions`, authenticateToken, predictionRoutes);
+app.post(`${base}/plan-trip`, authenticateToken, tripPlannerController.planTrip);
+app.use(`${base}`, coreRoutes); // Rutas públicas de tránsito
+app.use(`${base}/trips`, authenticateToken, tripsRoutes);
+app.use(`${base}/admin`, authenticateToken, requireRole('admin'), adminRoutes);
+app.use(`${base}/social`, socialRoutes);
+
+// 4. Fallback 404
+app.all('*', (req, res, next) => {
+    const err = new Error(`Endpoint ${req.originalUrl} no encontrado`);
+    err.statusCode = 404;
+    next(err);
 });
 
-// Manejo de errores 500
-app.use((err, req, res, next) => {
-    console.error('[Error Global]', err.stack);
-    res.status(500).json({ 
-        error: "Error interno del servidor", 
-        message: "Error inesperado en la API." 
-    });
-});
+// 5. Global Error Middleware
+app.use(ErrorHandler);
 
 module.exports = app;

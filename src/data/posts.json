@@ -1,0 +1,19 @@
+[
+  {
+    "id": "sample-alert-1",
+    "authorId": "system",
+    "type": "alert",
+    "content": "Gran congestión en la Av. Pedro de Heredia por desvío en el sector de Bazurto.",
+    "location": { "type": "route", "routeId": "2", "label": "Ruta 2" },
+    "alertData": {
+      "category": "road_block",
+      "severity": "high",
+      "verified": true,
+      "expiresAt": "2026-05-05T04:00:00Z"
+    },
+    "reactions": { "like": 12, "useful": 45, "warning": 28, "laugh": 0 },
+    "commentsCount": 5,
+    "isActive": true,
+    "createdAt": "2026-05-04T22:00:00Z"
+  }
+]

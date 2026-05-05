@@ -1,0 +1,36 @@
+[
+  {
+    "id": "c1",
+    "authorId": "user1",
+    "isAnonymous": false,
+    "category": "transport_service",
+    "subcategory": "overcrowding",
+    "title": "Hacinamiento extremo en Ruta 2",
+    "description": "El bus placa UY-123 va con exceso de pasajeros, no se puede ni respirar.",
+    "mediaUrls": [],
+    "location": { "type": "route", "routeId": "2", "label": "Ruta 2 - Bocagrande" },
+    "status": "in_progress",
+    "votes": 12,
+    "votedBy": ["u1", "u2", "u3"],
+    "priority": "high",
+    "isPublic": true,
+    "createdAt": "2026-05-04T10:00:00Z"
+  },
+  {
+    "id": "c2",
+    "authorId": null,
+    "isAnonymous": true,
+    "category": "infrastructure",
+    "subcategory": "lighting",
+    "title": "Parada sin luz en Manga",
+    "description": "La parada frente al Fuerte del Pastelillo está a oscuras, es muy peligroso de noche.",
+    "mediaUrls": [],
+    "location": { "type": "stop", "stopId": "s8", "label": "Parada Fuerte Pastelillo" },
+    "status": "received",
+    "votes": 3,
+    "votedBy": [],
+    "priority": "low",
+    "isPublic": true,
+    "createdAt": "2026-05-04T21:00:00Z"
+  }
+]
