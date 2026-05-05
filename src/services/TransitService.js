@@ -3,18 +3,39 @@ const path = require('path');
 
 class TransitService {
     constructor() {
-        this.dataPath = path.join(__dirname, '../data/transit_data.json');
+        // Usar path.resolve para asegurar ruta absoluta compatible con Linux/Render
+        this.dataPath = path.resolve(__dirname, '../data/transit_data.json');
         this.transitData = this.loadData();
         this.waitingUsers = new Map(); // stopId -> count
     }
 
     loadData() {
         try {
-            return JSON.parse(fs.readFileSync(this.dataPath, 'utf8'));
+            console.log(`[TransitService] Intentando cargar datos desde: ${this.dataPath}`);
+            
+            if (!fs.existsSync(this.dataPath)) {
+                console.warn(`[TransitService] ADVERTENCIA: El archivo no existe en ${this.dataPath}`);
+                return this.getFallbackData();
+            }
+
+            const rawData = fs.readFileSync(this.dataPath, 'utf8');
+            const parsedData = JSON.parse(rawData);
+            
+            console.log(`[TransitService] ✅ Datos cargados exitosamente (${parsedData.routes?.length || 0} rutas)`);
+            return parsedData;
         } catch (error) {
-            console.error('[TransitService] Fallo al cargar datos:', error);
-            return { routes: [] };
+            console.error('[TransitService] ❌ Error crítico al cargar datos:', error.message);
+            return this.getFallbackData();
         }
+    }
+
+    getFallbackData() {
+        console.info('[TransitService] ⚠️ Usando fallback profesional (memoria vacía para evitar crash)');
+        return { 
+            routes: [],
+            lastUpdate: new Date().toISOString(),
+            status: 'fallback_active'
+        };
     }
 
     getAllRoutes() {
