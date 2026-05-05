@@ -28,6 +28,7 @@ const { authenticateToken, requireRole } = require('./middleware/auth');
 const base = '/api/v1';
 
 app.use('/uploads', express.static('uploads'));
+app.get('/', (req, res) => res.status(200).json({ status: 'ok', message: 'SafeRoute API funcionando' }));
 app.get('/health', (req, res) => res.status(200).json({ status: 'success', message: 'API Online' }));
 
 // Auth & Users
